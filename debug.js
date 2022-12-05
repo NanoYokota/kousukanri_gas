@@ -1,6 +1,6 @@
 function test() {
   // calcTotal();
-  Logger.log( new ListSheetInfo( "LIST" ) );
+  Logger.log( new AnalysisSheetInfo( "運用実装", "MT_" ) );
   // Logger.log( labelListSh.labelsByCategory );
 }
 

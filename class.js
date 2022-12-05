@@ -257,6 +257,65 @@ class MonthSheetInfo extends FormatSheetInfo {
     this.total.values.raw = range.getValues();
     return this.total.values.raw;
   }
+
+  mergeTotals( analysisSh ) {
+    const functionLabel = this.className + ".mergeTotals";
+    const totalsNum = this.total.rows.numRaw
+      ? this.total.rows.numRaw
+      : this.getTotalRows().numRaw;
+    if ( totalsNum <= 0 ) {
+      if ( debug ) {
+        console.log( `[DEBUG: ${ functionLabel }] This month has no totals.` );
+      }
+      return totals;
+    }
+    const shTotals = this.getRawTotalValues();
+    if ( debug ) {
+      console.log( `[DEBUG: ${ functionLabel }] shTotals↓` );
+      console.log( shTotals );
+    }
+    for ( let i = 0; i < shTotals.length; i++ ) { // 対象のシートの集計
+      const total = shTotals[ i ];
+      if ( debug ) {
+        console.log( `[DEBUG: ${ functionLabel }] This loop total of month sheet ↓` );
+        console.log( total );
+      }
+      const prjTotal = total[ 0 ];
+      const labelTotal = total[ 1 ];
+      const timeTotal = total[ 2 ];
+      const categoryLabel = analysisSh.category.label;
+      if ( !categoryLabel ) {
+        log( functionLabel, categoryLabel, { type: 'error', label: "categoryLabel" } );
+      }
+      if ( labelTotal.indexOf( categoryLabel ) < 0 ) {
+        if ( debug ) {
+          console.log( `[DEBUG: ${ functionLabel }] Task ${ labelTotal } has been skipped.` );
+        }
+        continue;
+      }
+      for ( let j = 0; j < analysisSh.total.values.withTaskLabels.length; j++ ) { // 集計―シートの集計
+        const totalValue = analysisSh.total.values.withTaskLabels[ j ];
+        if ( debug ) {
+          console.log( `[DEBUG: ${ functionLabel }] totalValue before this loop process ↓` );
+          console.log( totalValue );
+        }
+        const labelTotalValue = totalValue[ 2 ];
+        if ( labelTotalValue == labelTotal ) { // 同じタスクが見つかった場合
+          const indexPrj = analysisSh.arrayIndexPrj[ prjTotal ];
+          if ( debug ) {
+            console.log( `[DEBUG: ${ functionLabel }] Same task ${ labelTotal } detected.` );
+            console.log( `[DEBUG: ${ functionLabel }] Worked hour: ${ timeTotal / MINUTES_PER_HOUR }` );
+          }
+          totalValue[ indexPrj ] += timeTotal / MINUTES_PER_HOUR;
+          break;
+        } // end if ( labelTotalValue == labelTotal )
+      } // end for ( let j = 0; j < analysisSh.total.values.withTaskLabels.length; j++ )
+    } // end for ( let i = 0; i < shTotals.length; i++ )
+    if ( debug ) {
+      console.log( `[DEBUG: ${ functionLabel }] analysisSh.total.values.withTaskLabels after one month sheet process ↓` );
+      console.log( analysisSh.total.values.withTaskLabels );
+    }
+  }
 }
 
 class FormatAnalysisSheetInfo extends SheetInfo {
@@ -287,16 +346,20 @@ class FormatAnalysisSheetInfo extends SheetInfo {
     this.project.rows.input = this.input.rows.label;
     this.project.cols.firstInput = this.labels.cols.lastInput + 1;
     this.total = template();
+    this.total.rows.labelInput = this.input.rows.label;
     this.total.rows.firstInput = this.input.rows.first;
     this.total.cols.firstInput = this.labels.cols.lastInput + 1;
   }
 }
 
 class AnalysisSheetInfo extends FormatAnalysisSheetInfo {
-  constructor( sheetName, category ) {
-    super( sheetName );
+  constructor( categoryName, categoryLabel ) {
+    super( `集計_${ categoryName }` );
     this.className = "AnalysisSheetInfo";
-    this.category = category;
+    this.category = {
+      name: categoryName,
+      label: categoryLabel,
+    };
   }
 
   setRawProjectsNumber( projectsNum ) {
@@ -426,7 +489,7 @@ class AnalysisSheetInfo extends FormatAnalysisSheetInfo {
 
   getClearTotalsRange() {
     const funcName = this.className + ".getClearTotalsRange";
-    const rowNum = this.sheet.getLastRow() - this.total.rows.firstInput;
+    const rowNum = this.sheet.getLastRow() - this.total.rows.labelInput;
     const colNum = this.sheet.getLastColumn() - this.total.cols.firstInput + 1;
     if ( !rowNum || rowNum <= 0 || !colNum || colNum <= 0 ) {
       log( funcName, "rowNum or colNum is 0 or null." );
@@ -540,7 +603,6 @@ class AnalysisSheetInfo extends FormatAnalysisSheetInfo {
 
   putRawTotals( totals ) {
     const functionLabel = "AnalysisSheetInfo.putTotals()";
-    this.clearTotals();
     const range = this.getRawTotalsRange();
     this.total.values.raw = totals;
     try {
@@ -552,7 +614,6 @@ class AnalysisSheetInfo extends FormatAnalysisSheetInfo {
 
   putTotals( totals ) {
     const functionLabel = "AnalysisSheetInfo.putTotals()";
-    this.clearTotals();
     const range = this.getTotalsRangeWithTaskLabels();
     this.total.values.raw = totals;
     try {
@@ -570,6 +631,96 @@ class AnalysisSheetInfo extends FormatAnalysisSheetInfo {
     } catch ( e ) {
       log( funcName, e, { label: "error", } );
     }
+    let emptyTotalsRow = new Array( this.getProjectsNumber() ).fill( 0 );
+    const numLabels = this.getRawLabelsNumber();
+    if ( debug ) {
+      console.log( `[DEBUG: ${ funcName }] emptyTotalsRow.length: ${ emptyTotalsRow.length }` );
+    }
+    let emptyTotals = new Array( numLabels ).fill( emptyTotalsRow );
+    if ( debug ) {
+      console.log( `[DEBUG: ${ funcName }] emptyTotals.length: ${ emptyTotals.length }` );
+    }
+    this.putRawTotals( emptyTotals );
+  }
+
+  projectExists() {
+    const funcName = this.className + ".projectExists";
+    if ( !this.project.numbers.raw ) {
+      this.getProjectsNumber();
+    }
+    if ( debug ) {
+      log( funcName, this.project.numbers.raw, { label: "this.project.numbers.raw" } );
+    }
+    return this.project.numbers.raw > 0;
+  }
+
+  labelExists() {
+    const funcName = this.className + ".labelExists";
+    if ( !this.labels.numbers.raw ) {
+      this.getRawLabelsNumber();
+    }
+    if ( debug ) {
+      log( funcName, this.labels.numbers.raw, { label: "this.labels.numbers.raw" } );
+    }
+    return this.labels.numbers.raw > 0;
+  }
+
+  calcAllMonth() {
+    const functionLabel = "calcAllMonth";
+    this.clearTotals();
+    this.getTotalValuesWithTaskLabels();
+    if ( debug ) {
+      console.log( `[DEBUG: ${ functionLabel }] this.total.values.withTaskLabels` );
+      console.log( this.total.values.withTaskLabels );
+    }
+    this.arrayIndexPrj = {};
+    const projects = this.getRawProjectValues()[ 0 ];
+    if ( debug ) {
+      console.log( `[DEBUG: ${ functionLabel }] projects ↓` );
+      console.log( projects );
+    }
+    projects.forEach( ( project, i ) => {
+      this.arrayIndexPrj[ project ] = i + this.total.cols.firstInput - 1;
+    } );
+    if ( debug ) {
+      console.log( `[DEBUG: ${ functionLabel }] this.arrayIndexPrj ↓` );
+      console.log( this.arrayIndexPrj );
+    }
+    if ( yearNow == yearStr ) {
+      if ( debug ) {
+        Logger.log( `[DEBUG: ${ functionLabel }] This year is first year.` );
+      }
+      for ( let i = monthNow; i >= monthStr; i-- ) {
+        const sheetName = monthShName( yearStr, i );
+        const monthSh = new MonthSheetInfo( sheetName );
+        monthSh.mergeTotals( this );
+      }
+    } else {
+      if ( debug ) {
+        Logger.log( `[DEBUG: ${ functionLabel }] This year is after first year.` );
+      }
+      // 初年度分の12月まで
+      for ( let i = 12; i >= monthStr; i-- ) {
+        const sheetName = monthShName( yearStr, i );
+        const monthSh = new MonthSheetInfo( sheetName );
+        monthSh.mergeTotals( this );
+      }
+      // 初年度の次の年から去年までの12月分
+      for ( let i = yearStr + 1; i < yearNow; i++ ) {
+        for ( let j = 1; j < 12; j++ ) {
+          const sheetName = monthShName( i, j );
+          const monthSh = new MonthSheetInfo( sheetName );
+          monthSh.mergeTotals( this );
+        }
+      }
+      // 今年の今月まで
+      for ( let i = 1; i <= monthNow; i++ ) {
+        const sheetName = monthShName( yearNow, i );
+        const monthSh = new MonthSheetInfo( sheetName );
+        monthSh.mergeTotals( this );
+      }
+    }
+    this.putTotals( this.total.values.withTaskLabels );
   }
 }
 
@@ -749,6 +900,19 @@ class ListSheetInfo extends SheetInfo {
     }
     this.category.values.raw = range.getValues();
     return this.category.values.raw;
+  }
+
+  getCategoryLabel( name ) {
+    if ( !this.category.values.raw ) {
+      this.getRawCategoryValues();
+    }
+    for ( let i = 0; i < this.category.values.raw.length; i++ ) {
+      const row = this.category.values.raw[ i ];
+      if ( row[ 0 ] == name ) {
+        return row[ 1 ];
+      }
+    }
+    return false;
   }
 }
 

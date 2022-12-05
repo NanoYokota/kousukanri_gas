@@ -3,7 +3,7 @@ function calcTotalMonthly()
   addCategories();
   addProjects();
   addTasks();
-  calcTotal();
+  calcAllTotals();
 }
 
 function makeNewMonthSh()
