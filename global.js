@@ -30,6 +30,3 @@ const formatAnalysisSh = new FormatAnalysisSheetInfo( "フォーマット_集計
 
 // 「集計」シート
 const categories = listSh.getRawCategoryValues();
-const sheetsAnalysis = categories.map( ( cat ) => {
-  return thisSs.getSheetByName( `集計_${ cat[ 0 ] }` );
-} );

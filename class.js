@@ -1,5 +1,5 @@
 const template = () => {
-  return { rows: {}, cols: {}, ranges: {}, values: {}, numbers: {}, };
+  return { rows: {}, cols: {}, ranges: {}, values: {}, numbers: {}, indexes: {}, };
 };
 
 class SheetInfo {
@@ -372,13 +372,15 @@ class AnalysisSheetInfo extends FormatAnalysisSheetInfo {
   }
 
   getNowLabelsRow() {
-    const nowInput = this.sheet
+    const funcName = this.className + ".getNowLabelsRow";
+    let nowInput = this.sheet
       .getRange( this.input.rows.label, this.labels.cols.firstInput )
       .getNextDataCell( SpreadsheetApp.Direction.DOWN )
       .getRow();
     if ( !nowInput || nowInput <= 0 || nowInput > 500 ) {
-      console.error( log( funcName, nowInput, { label: "nowInput", output: "return", type: "error" } ) );
-      log( funcName, "The nowInput is invalid.", { type: "error" } );
+      console.error( log( funcName, nowInput, { label: "nowInput", output: "return", type: "warn" } ) );
+      log( funcName, "The nowInput is invalid.", { type: "warn" } );
+      nowInput = this.input.rows.label;
     }
     this.labels.rows.nowInput = nowInput;
     return this.labels.rows.nowInput;
@@ -471,10 +473,12 @@ class AnalysisSheetInfo extends FormatAnalysisSheetInfo {
   }
 
   getLabelClearRange() {
+    const funcName = this.className + ".getLabelClearRange";
     const lastRow = this.sheet.getLastRow();
     const rowNum = lastRow - this.input.rows.label;
     if ( !rowNum || rowNum <= 0 ) {
-      log( funcName, rowNum, { label: "rowNum", type: "error" } );
+      log( funcName, rowNum, { label: "rowNum", type: "warn" } );
+      return null;
     }
     if ( !this.labels.cols.num || this.labels.cols.num <= 0 ) {
       log( funcName, this.labels.cols.num, { label: "this.labels.cols.num", type: "error" } );
@@ -546,7 +550,10 @@ class AnalysisSheetInfo extends FormatAnalysisSheetInfo {
 
   putLabels( labels ) {
     const funcName = this.className + ".putLabels";
-    this.getLabelClearRange().clearContent();
+    const clearRange = this.getLabelClearRange();
+    if ( clearRange ) {
+      clearRange.clearContent();
+    }
     if ( !labels.length || labels.length <= 0 ) {
       console.error( log( funcName, labels, { type : "error", output : "return", label: "labels" } ) );
       console.error( labels );
@@ -604,6 +611,9 @@ class AnalysisSheetInfo extends FormatAnalysisSheetInfo {
   putRawTotals( totals ) {
     const functionLabel = "AnalysisSheetInfo.putTotals()";
     const range = this.getRawTotalsRange();
+    if ( !range ) {
+      return;
+    }
     this.total.values.raw = totals;
     try {
       range.setValues( this.total.values.raw );
@@ -632,7 +642,7 @@ class AnalysisSheetInfo extends FormatAnalysisSheetInfo {
       log( funcName, e, { label: "error", } );
     }
     let emptyTotalsRow = new Array( this.getProjectsNumber() ).fill( 0 );
-    const numLabels = this.getRawLabelsNumber();
+    const numLabels = this.labels.numbers.raw ?? this.getRawLabelsNumber();
     if ( debug ) {
       console.log( `[DEBUG: ${ funcName }] emptyTotalsRow.length: ${ emptyTotalsRow.length }` );
     }
@@ -730,25 +740,29 @@ class ListSheetInfo extends SheetInfo {
     this.className = this.constructor.name;
     this.input = template();
     this.project = template();
-    this.task = template();
     this.category = template();
-    this.col.project = 1;
-    this.col.projectCategory = 2;
-    this.col.category = 4;
-    this.col.categoryLabel = this.col.category + 1;
-    this.task.rows.firstInput = 1;
-    this.input.rows.first = 1;
+    this.input.rows.label = 1;
+    this.input.rows.first = 2;
+    this.project.rows.labelInput = this.input.rows.label;
+    this.project.rows.firstInput = this.input.rows.first;
     this.project.cols.firstInput = 1;
-    this.project.cols.name = this.project.cols.firstInput;
+    this.project.cols.date = this.project.cols.firstInput;
+    this.project.cols.name = this.project.cols.date + 1;
     this.project.cols.category = this.project.cols.name + 1;
     this.project.cols.lastInput = this.project.cols.category;
     this.project.cols.num = this.project.cols.lastInput - this.project.cols.firstInput + 1;
-    this.category.rows.firstInput = 1;
-    this.category.cols.firstInput = 4;
-    this.category.cols.nameInput = this.category.cols.firstInput;
-    this.category.cols.labelInput = this.category.cols.nameInput + 1;
-    this.category.cols.lastInput = this.category.cols.labelInput;
+    this.project.indexes.date = this.project.cols.date - 1;
+    this.project.indexes.name = this.project.cols.name - 1;
+    this.project.indexes.category = this.project.cols.category - this.project.cols.firstInput;
+    this.category.rows.labelInput = this.input.rows.label;
+    this.category.rows.firstInput = this.input.rows.first;
+    this.category.cols.firstInput = this.project.cols.lastInput + 2;
+    this.category.cols.name = this.category.cols.firstInput;
+    this.category.cols.label = this.category.cols.name + 1;
+    this.category.cols.lastInput = this.category.cols.label;
     this.category.cols.num = this.category.cols.lastInput - this.category.cols.firstInput + 1;
+    this.category.indexes.name = this.category.cols.name - this.category.cols.firstInput;
+    this.category.indexes.label = this.category.cols.label - this.category.cols.firstInput;
   }
 
   getProjectNowRow() {
@@ -789,38 +803,6 @@ class ListSheetInfo extends SheetInfo {
     return this.category.numbers.rawValues;
   }
 
-  initParams() {
-    const functionLabel = "ListSheetInfo.initParams()";
-    try {
-      this.row.last.project = this.sheet
-        .getRange( this.task.rows.firstInput, this.col.project )
-        .getNextDataCell( SpreadsheetApp.Direction.DOWN )
-        .getRow();
-      this.row.last.category = this.sheet
-        .getRange( this.task.rows.firstInput, this.col.category )
-        .getNextDataCell( SpreadsheetApp.Direction.DOWN )
-        .getRow();
-      this.num.project = this.row.last.project;
-      this.num.category = this.row.last.category;
-    } catch ( e ) {
-      console.error( `[ERROR: ${ functionLabel }] ${ e.message }` );
-    }
-  }
-
-  initRangeProject() {
-    const functionLabel = "ListSheetInfo.initRangeProject()";
-    try {
-      this.range.project = this.sheet.getRange(
-        this.task.rows.firstInput,
-        this.col.project,
-        this.num.project,
-        2
-      );
-    } catch ( e ) {
-      console.error( `[ERROR: ${ functionLabel }] ${ e.message }` );
-    }
-  }
-
   getRawCategoriesRange() {
     const functionLabel = this.className + ".getRawCategoriesRange()";
     const categoryNum = this.getRawCategoriesNum();
@@ -838,7 +820,11 @@ class ListSheetInfo extends SheetInfo {
   }
 
   getRawProjectsRange() {
-    const projectNum = this.getRawProjectsNum();
+    const funcName = this.className + ".getRawProjectsRange";
+    let projectNum = this.project.numbers.rawValues;
+    if ( !projectNum ) {
+      projectNum = this.getRawProjectsNum();
+    }
     if ( !projectNum || projectNum <= 0 ) {
       console.error( log( funcName, projectNum, { label: "projectNum", output: "return" } ) );
       log( funcName, "The projectNum is invalid.", { type : "error", } );
@@ -848,7 +834,7 @@ class ListSheetInfo extends SheetInfo {
       log( funcName, "this.project.cols.num is invalid.", { type : "error", } );
     }
     this.project.ranges.raw = this.sheet.getRange(
-      this.input.rows.first,
+      this.project.rows.firstInput,
       this.project.cols.firstInput,
       projectNum,
       this.project.cols.num
@@ -880,13 +866,13 @@ class ListSheetInfo extends SheetInfo {
     const functionLabel = this.className + ".getProjectsByCategory";
     let projects = {};
     this.getRawProjectValues().forEach( ( project ) => {
-      if ( !projects[ project[ 1 ] ] ) {
-        projects[ project[ 1 ] ] = {
-          label: project[ 1 ],
+      if ( !projects[ project[ this.project.indexes.category ] ] ) {
+        projects[ project[ this.project.indexes.category ] ] = {
+          label: project[ this.project.indexes.category ],
           values: [],
         }
       }
-      projects[ project[ 1 ] ].values.push( project[ 0 ] );
+      projects[ project[ this.project.indexes.category ] ].values.push( project[ this.project.indexes.name ] );
     } );
     this.project.values.byCategory = projects;
     return this.project.values.byCategory;
